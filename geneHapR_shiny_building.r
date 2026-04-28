@@ -6,10 +6,10 @@ library(geneHapR)
 library(GenomicRanges)
 options(shiny.maxRequestSize = 100000 * 1024^2)
 # windows下加载
-# source("D:/R/R_Workspace/workspace/ShinyAPP/haplotype_shinyapp/www/vis_LDheatmap.R")
-# source("D:/R/R_Workspace/workspace/ShinyAPP/haplotype_shinyapp/www/HaploWorldMap.r")
-# source("D:/R/R_Workspace/workspace/ShinyAPP/haplotype_shinyapp/www/zzz.R")
-# source("D:/R/R_Workspace/workspace/ShinyAPP/haplotype_shinyapp/www/plotHapTable.r")
+source("D:/R/R_Workspace/workspace/ShinyAPP/haplotype_shinyapp/www/vis_LDheatmap.R")
+source("D:/R/R_Workspace/workspace/ShinyAPP/haplotype_shinyapp/www/HaploWorldMap.r")
+source("D:/R/R_Workspace/workspace/ShinyAPP/haplotype_shinyapp/www/zzz.R")
+source("D:/R/R_Workspace/workspace/ShinyAPP/haplotype_shinyapp/www/plotHapTable.r")
 # linux下加载
 # source("www/vis_LDheatmap.R")
 # source("www/HaploWorldMap.r")
@@ -17,8 +17,8 @@ options(shiny.maxRequestSize = 100000 * 1024^2)
 # source("www/hap2vcf.R")
 # source("www/plotHapTable.r")
 # tbtools插件加载
-source(file.path(find.package("geneHapR"), "extdata", "www","vis_LDheatmap.R"))
-source(file.path(find.package("geneHapR"), "extdata", "www","HaploWorldMap.r"))
+# source(file.path(find.package("geneHapR"), "extdata", "www","vis_LDheatmap.R"))
+# source(file.path(find.package("geneHapR"), "extdata", "www","HaploWorldMap.r"))
 # source(file.path(find.package("geneHapR"), "extdata", "www","zzz.R"))
 # source(file.path(find.package("geneHapR"), "extdata", "www", "plotHapTable.r"))
 # ========================
@@ -2083,13 +2083,18 @@ server <- function(input, output, session) {
   HapNet <- reactive({
     req(active_hapresult())
     if (input$plothapnet_group != "none") {
+      hapRe0 <- hap_summary(active_hapresult())
+      hapRe0[hapRe0 == "DEL"] = "N"
       geneHapR::get_hapNet(
-        hap_summary(active_hapresult()),
+        hapRe0,
         AccINFO = accession(),
-        groupName = input$plothapnet_group
+        groupName = input$plothapnet_group,
+        na.label = "Unknown"
       )
     } else {
-      geneHapR::get_hapNet(hap_summary(active_hapresult()))
+      hapRe0 <- hap_summary(active_hapresult())
+      hapRe0[hapRe0 == "DEL"] = "N"
+      geneHapR::get_hapNet(hapRe0, na.label = "Unknown")
     }
   })
   
@@ -2399,7 +2404,8 @@ server <- function(input, output, session) {
         pop = FALSE, # 是否在绘制后弹出视图端口（FALSE保持图形对象）
         text = as.logical(input$ldheatmap_text) # 是否在热图单元格中显示LD数值（FALSE仅显示颜色）
       )
-    },width = function() input$ldheatmap_plotout_width,
+    },
+    width = function() input$ldheatmap_plotout_width,
     height = function() input$ldheatmap_plotout_height,
     res = 96)
   })
