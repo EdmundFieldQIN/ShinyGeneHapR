@@ -459,7 +459,8 @@ ui <- dashboardPage(
                                                               numericInput("atgas0_start", label = "Start", value = 0),
                                                               numericInput("atgas0_end", label = "End",value = 0),
                                                               actionButton("set_atgas0","Set ATG as 0",icon = icon("play"),style = "color: white; background-color: #3498db; border-color: #2980b9;")
-                                             ),
+                                             )
+                                            # actionButton("process_active_hap","Process Haplotypes",width = "95%",icon = icon("play"),style = "color: white; background-color: #3498db; border-color: #2980b9;")
                                          )
                                   ),
                                   column(width = 9,
@@ -607,7 +608,8 @@ ui <- dashboardPage(
                                          box(title = "Haplotype Vs Phenotype Show",status = "primary",solidHeader = T,width = 12,
                                              div(style = "overflow-y: auto;overflow-x: auto;",
                                                  plotOutput("hapvspheno_plotout",height = "80%"),
-                                                 verbatimTextOutput("hapvspheno_testout")
+                                                 DT::DTOutput("hapvspheno_testout"),
+                                                 downloadButton("hapvspheno_testout_download","Download Table",style = "color: white; background-color: #1abc9c; border-color: #16a085;")
                                              )
                                          )
                                   ),
@@ -1875,7 +1877,8 @@ server <- function(input, output, session) {
                           selected = "none")
       }
     }
-    HapSum <- display_hap_summary()
+    # HapSum <- display_hap_summary()
+    HapSum <- geneHapR::hap_summary(active_hapresult())
     if (!is.null(HapSum)) {
         # 刷新genemodel的长宽
         chr <- unique(HapSum[1, c(2:(ncol(HapSum) - 2))])
@@ -1888,8 +1891,8 @@ server <- function(input, output, session) {
         pos <- as.numeric(HapSum[2, c(2:(ncol(HapSum) - 2))])
         updateNumericInput(session, "ldheatmap_start", value = min(pos))
         updateNumericInput(session, "ldheatmap_end", value = max(pos))
-        updateNumericInput(session, "genemodel_width", value = max(pos))
-        updateNumericInput(session, "genemodel_start", value = min(pos))
+        # updateNumericInput(session, "genemodel_width", value = max(pos))
+        # updateNumericInput(session, "genemodel_start", value = min(pos))
         updateNumericInput(session, "hapeff_end", value = max(pos))
         updateNumericInput(session, "hapeff_start", value = min(pos))
         
@@ -1900,7 +1903,23 @@ server <- function(input, output, session) {
                           selected = hap_names_list[1:3])
     }
   })
-  
+
+  # 根据 "Select import data type:"为"atgas0"时，优先使用atgas0_hapresult()生成的HapSummary来更新位置输入框，因为这个结果更符合用户当前选择的基因模型设置。
+  observeEvent(list(input$genemodel_input, display_hap_summary()),{
+    req(display_hap_summary())
+    if (input$genemodel_input == "atgas0") {
+        HapSum1 <- display_hap_summary()
+        pos <- as.numeric(HapSum1[2, c(2:(ncol(HapSum1) - 2))])
+        updateNumericInput(session, "genemodel_width", value = max(pos))
+        updateNumericInput(session, "genemodel_start", value = min(pos))
+    } else if(input$genemodel_input == "ori") {
+        HapSum1 <- geneHapR::hap_summary(active_hapresult())
+        pos <- as.numeric(HapSum1[2, c(2:(ncol(HapSum1) - 2))])
+        updateNumericInput(session, "genemodel_width", value = max(pos))
+        updateNumericInput(session, "genemodel_start", value = min(pos))
+    }
+  })
+
   
   
   HapTablePlot <- eventReactive(input$hap_table_plot,{
@@ -2230,21 +2249,32 @@ server <- function(input, output, session) {
     return(result)
   })
   
-  observeEvent(HapVsPheno(),{
+  observeEvent(HapVsPheno(), {
     req(HapVsPheno())
-    if(inherits(HapVsPheno(), "try-error")){
-      output$hapvspheno_plotout <- renderPlot({
-        plot.new()
-        title(as.character(HapVsPheno()))
-      })
-    } else{
-      output$hapvspheno_plotout <- renderPlot({HapVsPheno()$figs},
-                                              width = function() input$hapvspheno_plotout_width,
-                                              height = function() input$hapvspheno_plotout_height,
-                                              res = 96)
-      output$hapvspheno_testout <- renderPrint({HapVsPheno()$T.Result})
+    if (inherits(HapVsPheno(), "try-error")) {
+        output$hapvspheno_plotout <- renderPlot({
+            plot.new()
+            title(as.character(HapVsPheno()))
+        })
+    } else {
+        output$hapvspheno_plotout <- renderPlot(
+            {
+                HapVsPheno()$figs
+            },
+            width = function() input$hapvspheno_plotout_width,
+            height = function() input$hapvspheno_plotout_height,
+            res = 96
+        )
+        #   output$hapvspheno_testout <- renderPrint({HapVsPheno()$T.Result})
+        output$hapvspheno_testout <- DT::renderDT({
+            DT::datatable(
+                as.data.frame(HapVsPheno()$T.Result),
+                options = list(scrollX = TRUE, pageLength = 7),
+                rownames = TRUE
+            )
+        })
     }
-  })
+    })
   # 图片输出框
   
   # 图片下载框
@@ -2263,8 +2293,15 @@ server <- function(input, output, session) {
                width = as.numeric(input$hapvspheno_down_width),
                height = as.numeric(input$hapvspheno_down_height), dpi = 300)
       }
-      
-      
+    }
+  )
+  # 相关性数据表格下载
+  output$hapvspheno_testout_download <- downloadHandler(
+    filename = function() {
+      paste0(Sys.Date(), '_HapVsPheno_TTestResults.csv')
+    },
+    content = function(file) {
+      write.csv(as.data.frame(HapVsPheno()$T.Result), file, quote = FALSE)
     }
   )
   
@@ -2321,13 +2358,13 @@ server <- function(input, output, session) {
     filename = function(){
       paste0(Sys.Date(), '_HaploEFF_Effect.csv')
     },content = function(file){
-      write.csv(as.data.frame(HapEFF()$EFF),file,quote = F,)
+      write.csv(as.data.frame(HapEFF()$EFF),file,quote = F)
     })
   output$hapeff_p_output_download <- downloadHandler(
     filename = function(){
       paste0(Sys.Date(), '_HaploEFF_Pvalue.csv')
     },content = function(file){
-      write.csv(as.data.frame(HapEFF()$p),file,quote = F,)
+      write.csv(as.data.frame(HapEFF()$p),file,quote = F)
     })
   
   # 图片下载框
@@ -2489,23 +2526,6 @@ server <- function(input, output, session) {
   # 根据当前的geodis_hapnames选择更新与之对应数量的colourInput，返回到geodis_hapcolor_ui输出
   # 每个colourInput的id格式为"geodis_hapcolor_i"，其中i是haplotype名称在geodis_hapnames中的索引
   # 返回的colorInput横向排列，每行不超过3个
-    # observeEvent(input$geodis_hapcolor, {
-    #     hap_names <- input$geodis_hapnames
-    #     if (length(hap_names) > 0 && input$geodis_hapcolor == "TRUE") {
-    #     color_inputs <- lapply(seq_along(hap_names), function(i) {
-    #         colourInput(
-    #         inputId = paste0("geodis_hapcolor_", i),
-    #         label = paste("Color for", hap_names[i]),
-    #         value = RColorBrewer::brewer.pal(8, "Set2")[i %% 8 + 1]
-    #         )
-    #     })
-    #     output$geodis_hapcolor_ui <- renderUI({
-    #         do.call(tagList, color_inputs)
-    #     })
-    #     } else {
-    #     output$geodis_hapcolor_ui <- renderUI({})
-    #     }
-    # })
   observeEvent(
     list(input$geodis_hapcolor, input$geodis_hapnames),
     {
